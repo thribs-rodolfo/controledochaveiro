@@ -82,6 +82,60 @@ test("doLogin com credenciais válidas entra no app e cria a SESSAO", async func
   assert.match(salvo || "", /Admin Teste/, "sessão persistida no localStorage")
 })
 
+test("doLogin valida no SERVIDOR via RPC funcionario_login (não vaza a senha)", async function () {
+  const { window, doc, registro } = await preparar()
+  registro.__loginUser = {
+    id: 7,
+    usuario: "op",
+    senha: "segredo",
+    nome: "Operador",
+    perfil: "operador",
+    permissoes: null,
+    ativo: true,
+  }
+  doc.getElementById("loginUser").value = "op"
+  doc.getElementById("loginPass").value = "segredo"
+  await window.eval("doLogin()")
+  await esperarAssentar(window)
+  await esperarAssentar(window)
+
+  const chamou = registro.rpc.find((c) => c.nome === "funcionario_login")
+  assert.ok(chamou, "o login deveria chamar a RPC funcionario_login")
+  assert.strictEqual(chamou.args.p_usuario, "op")
+  assert.strictEqual(chamou.args.p_senha, "segredo")
+  assert.strictEqual(
+    window.eval("SESSAO && SESSAO.perfil"),
+    "operador",
+    "SESSAO deveria vir da RPC",
+  )
+})
+
+test("doLogin cai no caminho antigo se a RPC não existe (banco desatualizado)", async function () {
+  const { window, doc, registro } = await preparar()
+  // Banco sem a função (cliente não rodou o atualizar-banco.sql): não pode trancar o usuário.
+  registro.__loginRpcAusente = true
+  registro.__loginUser = {
+    id: 3,
+    usuario: "admin",
+    senha: "1234",
+    nome: "Admin Legado",
+    perfil: "admin",
+    permissoes: null,
+    ativo: true,
+  }
+  doc.getElementById("loginUser").value = "admin"
+  doc.getElementById("loginPass").value = "1234"
+  await window.eval("doLogin()")
+  await esperarAssentar(window)
+  await esperarAssentar(window)
+
+  assert.ok(
+    doc.getElementById("app").classList.contains("show"),
+    "mesmo sem a RPC, o login antigo deveria funcionar",
+  )
+  assert.strictEqual(window.eval("SESSAO && SESSAO.nome"), "Admin Legado")
+})
+
 test("doLogout limpa a SESSAO e volta para a tela de login", async function () {
   const { window, doc } = await preparar()
   window.eval("SESSAO = { id: 1, nome: 'X', perfil: 'admin' }")

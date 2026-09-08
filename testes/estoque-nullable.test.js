@@ -261,10 +261,7 @@ test("valuation: serviço fica fora da soma de custo e de venda (físico 5×2=10
   assert.match(texto, /venda:\s*R\$\s*15,00/, "valorVenda deveria ser 15,00 (só o físico). Texto: " + texto)
 })
 
-test("valuation: serviço com estoque/custo/venda não-nulos por engano ainda fica de fora", {
-  todo: "BUG no canônico: renderChaves não tem guarda por tipo_produto na valuation; " +
-    "serviço com números sujos entra na soma. Corrigido no index alterado (guarda servico).",
-}, async function () {
+test("valuation: serviço com estoque/custo/venda não-nulos por engano ainda fica de fora", async function () {
   const { window, doc } = await prepararComProdutos()
   // Serviço com números "sujos" (estoque 100, custo 9, venda 999): a guarda
   // explícita por tipo_produto tem que ignorá-lo mesmo assim.
@@ -278,4 +275,23 @@ test("valuation: serviço com estoque/custo/venda não-nulos por engano ainda fi
   )
   assert.match(texto, /custo\)[^R]*R\$\s*10,00/, "valorCusto deveria continuar 10,00. Texto: " + texto)
   assert.match(texto, /venda:\s*R\$\s*15,00/, "valorVenda deveria continuar 15,00. Texto: " + texto)
+})
+
+test("valuation: funcionário sem permissão de faturamento não vê o resumo de valor do estoque", async function () {
+  const { window, doc } = await prepararComProdutos()
+  await window.eval("pageChaves()")
+  await esperarAssentar(window)
+  // Operador comum, sem a permissão 'faturamento': o valor do estoque é dado do
+  // dono e não pode nem chegar ao DOM.
+  window.eval(
+    "SESSAO = { id: 2, usuario: 'balcao', nome: 'Balcao', perfil: 'operador', permissoes: '' };",
+  )
+  window.eval(
+    "CACHE.chaves = [{ id: 50, codigo: 'CH3', descricao: 'Chave Fisica', preco_custo: 2, preco_venda: 3, estoque: 5, estoque_min: 1, tipo_produto: 'chave', fabricante_id: 1, tipo: 'residencial' }];",
+  )
+  window.eval("renderChaves()")
+  const resumo = doc.querySelector("#chList .resumo-estoque")
+  assert.strictEqual(resumo, null, "sem permissão de faturamento, o resumo de valor não pode ser renderizado")
+  // A tabela de produtos em si continua visível (só o valor financeiro some).
+  assert.ok(doc.querySelector("#chList table"), "a lista de produtos deveria continuar aparecendo")
 })

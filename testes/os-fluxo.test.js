@@ -11,13 +11,11 @@
 // osItemFiltrar, osItemPick, osDescontoValor, osSalvar, registrarHistoricoOS,
 // osDocTexto, osQRConteudo (e, de raspão, renderOsFotos via osForm).
 //
-// OBSERVAÇÃO IMPORTANTE SOBRE IDs DUPLICADOS NO CANÔNICO:
-// No formulário de OS o id "osDesc" é usado DUAS vezes: na <textarea> de
-// Descrição E no <input> numérico de Desconto. Como getElementById devolve o
-// PRIMEIRO elemento na ordem do DOM, tanto osDescontoValor() quanto o payload
-// (dados.descricao) leem a <textarea> de Descrição. Por isso, para exercitar o
-// desconto (caso 3), escrevemos o valor numérico na <textarea> osDesc — que é o
-// que o código realmente lê. Isso reflete o comportamento REAL do canônico.
+// DESCONTO (bug corrigido): o campo de desconto tem id proprio "osDesconto",
+// separado da <textarea> de Descricao ("osDesc"). Antes os dois dividiam o id
+// "osDesc"; o getElementById devolvia a descricao, entao osDescontoValor lia o
+// TEXTO da descricao (parseFloat => NaN => 0) e o desconto nunca entrava no
+// total. Agora osDescontoValor() le o campo real "osDesconto".
 // ============================================================
 
 const { test } = require("node:test")
@@ -63,10 +61,10 @@ function definirCampo(doc, id, valor) {
   return el
 }
 
-// getElementById devolve o PRIMEIRO "osDesc" (a <textarea> de Descrição), que é
-// justamente o que osDescontoValor() e o payload leem. Usamos este acesso.
+// O campo de desconto agora tem id proprio "osDesconto" (separado da <textarea>
+// de Descricao "osDesc"). osDescontoValor() le o osDesconto.
 function campoDescontoReal(doc) {
-  return doc.getElementById("osDesc")
+  return doc.getElementById("osDesconto")
 }
 
 // ------------------------------------------------------------
@@ -123,7 +121,7 @@ test("osSalvar grava servicos com total=100 e desconto=0", async function () {
 
 // ------------------------------------------------------------
 // CASO 3: com desconto → total = subtotal - desconto no payload
-// osDescontoValor lê $("osDesc") (a textarea, 1º elemento) e $("osDescTipo").
+// osDescontoValor lê $("osDesconto") e $("osDescTipo").
 // Tipo 'reais' (default do <select>): desconto = valor absoluto.
 // ------------------------------------------------------------
 test("osSalvar aplica desconto em reais: total = subtotal - desconto", async function () {
@@ -131,7 +129,7 @@ test("osSalvar aplica desconto em reais: total = subtotal - desconto", async fun
 
   definirCampo(doc, "osTitulo", "Serviço com desconto")
   definirCampo(doc, "osMaoObra", "100,00") // subtotal = 100
-  // Escreve o desconto no campo que o código realmente lê (textarea osDesc).
+  // Escreve o desconto no campo real de desconto (osDesconto).
   campoDescontoReal(doc).value = "30"
   // osDescTipo default é "reais"
   definirCampo(doc, "osStatus", "orcamento")
@@ -151,6 +149,29 @@ test("osSalvar aplica desconto em reais: total = subtotal - desconto", async fun
   assert.ok(payload, "deve gravar o serviço")
   assert.strictEqual(payload.desconto, 30, "desconto de R$ 30")
   assert.strictEqual(payload.total, 70, "total = 100 - 30")
+})
+
+// ------------------------------------------------------------
+// REGRESSÃO (id duplicado osDesc): com a Descrição preenchida com TEXTO e o
+// desconto de 10% no campo próprio, o desconto TEM que entrar no total. Antes
+// osDescontoValor lia a descrição (texto) → 0 → total sem desconto (exatamente
+// o print do Thiago: mão de obra 200 + 10% mostrava 200 em vez de 180).
+// ------------------------------------------------------------
+test("desconto % aplica no total mesmo com Descrição preenchida (regressão id duplicado)", async function () {
+  const { window, doc } = await abrirFormularioOS()
+
+  definirCampo(doc, "osTitulo", "Abertura de veículo")
+  definirCampo(doc, "osDesc", "Abertura de porta automotiva") // Descrição com texto
+  definirCampo(doc, "osMaoObra", "200,00") // subtotal = 200
+  campoDescontoReal(doc).value = "10" // campo próprio de desconto
+  definirCampo(doc, "osDescTipo", "pct") // 10%
+
+  window.eval("osRecalc()")
+  assert.match(
+    doc.getElementById("osTotal").value,
+    /180/,
+    "200 − 10% = 180 (o desconto não pode ler a descrição)",
+  )
 })
 
 // ------------------------------------------------------------
@@ -208,35 +229,40 @@ test("osSalvar concluída com item físico baixa estoque e movimenta saída", as
   assert.ok(payloadServico, "deve gravar o serviço")
   assert.strictEqual(payloadServico.status, "concluido")
 
-  // update em chaves: estoque 3 - 1 = 2
-  const updatesChaves = registro.update.chaves || []
-  assert.ok(updatesChaves.length >= 1, "deve atualizar estoque da chave")
+  // Commit C: NÃO edita mais chaves.estoque no cliente. O estoque é derivado
+  // pelo trigger a partir da movimentação (fonte única). Antes o app fazia um
+  // chaves.update({estoque}) redundante; agora esse update NÃO deve existir.
+  const updatesChaves = (registro.update.chaves || []).filter(function (u) {
+    return u && Object.prototype.hasOwnProperty.call(u, "estoque")
+  })
   assert.strictEqual(
-    updatesChaves[0].estoque,
-    2,
-    "estoque da chave 10: 3 - 1 = 2",
+    updatesChaves.length,
+    0,
+    "não deve mais editar chaves.estoque no cliente (fonte única = movimentação)",
   )
 
-  // insert em movimentacoes 'saida' para a chave 10
+  // insert em movimentacoes 'saida' para a chave 10 (a fonte única do estoque)
   const movs = (registro.insert.movimentacoes || []).filter(
     (m) => m && m.chave_id == 10,
   )
   assert.strictEqual(movs.length, 1, "deve gerar 1 movimentação da chave 10")
   assert.strictEqual(movs[0].tipo, "saida")
   assert.strictEqual(movs[0].quantidade, 1)
+
+  // O cache local reflete o valor derivado (3 − 1 = 2), espelhando o trigger.
+  const estoqueCache = window.eval(
+    "(CACHE.chaves.find(function(x){return x.id==10})||{}).estoque",
+  )
+  assert.strictEqual(estoqueCache, 2, "cache otimista: estoque da chave 10 = 2")
 })
 
 // ------------------------------------------------------------
-// CASO 6: DIFERENÇA CANÔNICO × ALTERADO
-// No CANÔNICO, o loop de baixa só filtra por `!it.chave_id` — ou seja, um item
-// de SERVIÇO (chave_id 20) TAMBÉM gera movimentação de saída (bug: serviço não
-// deveria movimentar estoque). No ALTERADO, o loop pula `k.tipo_produto ===
-// 'servico'`, então NÃO movimenta.
-//
-// Detectamos a versão em runtime observando o próprio comportamento e afirmamos
-// o correto para cada uma (o teste passa nas DUAS versões, provando a diferença).
+// CASO 6: OS concluída SÓ com item de SERVIÇO não movimenta estoque.
+// O loop de baixa do osSalvar pula `k.tipo_produto === 'servico'`, então um
+// item de serviço (chave_id 20, tipo_produto 'servico') NÃO gera movimentação
+// de saída nem update de estoque (serviço é mão de obra, sem estoque físico).
 // ------------------------------------------------------------
-test("OS concluída com item de SERVIÇO: canônico movimenta (bug), alterado não", async function () {
+test("OS concluída com item de SERVIÇO não movimenta estoque", async function () {
   const { window, doc, registro } = await abrirFormularioOS()
 
   definirCampo(doc, "osTitulo", "OS concluída só com serviço")
@@ -257,30 +283,17 @@ test("OS concluída com item de SERVIÇO: canônico movimenta (bug), alterado n�
   )
   const updatesChaves = (registro.update.chaves || []).length
 
-  // Detecção de versão: se o serviço movimentou, é o CANÔNICO (bug); senão, alterado.
-  const ehCanonico = movsServico.length > 0
-
-  if (ehCanonico) {
-    // CANÔNICO: o item de serviço movimentou estoque (comportamento REAL/bug).
-    assert.strictEqual(
-      movsServico.length,
-      1,
-      "canônico: serviço (chave_id 20) gera movimentação de saída (bug)",
-    )
-    assert.strictEqual(movsServico[0].tipo, "saida")
-  } else {
-    // ALTERADO: serviço NÃO movimenta estoque (correção).
-    assert.strictEqual(
-      movsServico.length,
-      0,
-      "alterado: serviço não deve movimentar estoque",
-    )
-    assert.strictEqual(
-      updatesChaves,
-      0,
-      "alterado: sem update de estoque para item de serviço",
-    )
-  }
+  assert.strictEqual(
+    movsServico.length,
+    0,
+    "serviço não deve movimentar estoque. Movimentou: " +
+      JSON.stringify(movsServico),
+  )
+  assert.strictEqual(
+    updatesChaves,
+    0,
+    "sem update de estoque para item de serviço",
+  )
 })
 
 // ------------------------------------------------------------
@@ -354,6 +367,49 @@ test("osDocTexto monta orçamento e recibo; osQRConteudo monta o resumo", async 
   const qr = window.eval("osQRConteudo(CACHE.servicos[0])")
   assert.match(qr, /OS #5/, "resumo do QR menciona a OS")
   assert.match(qr, /Troca de segredo/, "resumo do QR menciona o título")
+})
+
+// ------------------------------------------------------------
+// EXTRA: nome de loja grande NÃO corta a mensagem do orçamento.
+// Um nome enorme era inserido inteiro e estourava o link/mensagem, cortando o
+// resto. Agora nomeLojaCurto limita o nome sem cortar o conteúdo do orçamento.
+// ------------------------------------------------------------
+test("osDocTexto encurta nome de loja grande sem cortar o resto do orçamento", async function () {
+  const { window } = await abrirFormularioOS()
+
+  const nomeGrande =
+    "Chaveiro Super Mega Ultra Rapido 24 Horas do Bairro Central e Regiao Metropolitana"
+  window.eval("CACHE.config = { nome_empresa: " + JSON.stringify(nomeGrande) + " };")
+  window.eval(
+    "CACHE.servicos = [{ id: 7, titulo: 'Abertura de porta', cliente_id: 1," +
+      " tipo: 'residencial', status: 'concluido', status_pagamento: 'pago'," +
+      " total: 80, valor_pago: 80, mao_de_obra: 80, desconto: 0," +
+      " forma_pagamento: 'Pix', itens: [] }];",
+  )
+
+  const nomeCurto = window.eval(
+    "nomeLojaCurto(" + JSON.stringify(nomeGrande) + ")",
+  )
+  // O nome foi de fato encurtado (menor que o original) e com reticências.
+  assert.ok(nomeCurto.length < nomeGrande.length, "nome deveria ser encurtado")
+  assert.ok(nomeCurto.endsWith("…"), "nome encurtado termina com reticências")
+
+  const msg = window.eval("osDocTexto(CACHE.servicos[0], 'orcamento')")
+  // O resto do orçamento continua presente (não foi cortado pelo nome grande).
+  assert.match(msg, /ORÇAMENTO — OS #7/, "cabeçalho presente")
+  assert.match(msg, /Abertura de porta/, "serviço presente")
+  assert.match(msg, /Total:/, "total presente")
+  assert.match(
+    msg,
+    /Proposta válida por 7 dias/,
+    "rodapé do orçamento presente (não cortado)",
+  )
+  // O nome completo NÃO aparece inteiro na mensagem.
+  assert.doesNotMatch(
+    msg,
+    /Regiao Metropolitana/,
+    "nome completo não deveria caber inteiro na mensagem",
+  )
 })
 
 // ------------------------------------------------------------
@@ -470,5 +526,58 @@ test("osSalvar grava as fotos novas da OS em 'imagens'", async function () {
   assert.ok(
     registro.delete.imagens && registro.delete.imagens.length >= 1,
     "deveria apagar a foto marcada para remover",
+  )
+})
+
+// ------------------------------------------------------------
+// CASO: Data de vencimento na OS pendente/fiado. Quando o pagamento NAO e
+// 'pago' integral, o campo de vencimento aparece e a data e gravada em
+// servicos.data_vencimento. Em 'pago' o campo fica oculto e nao grava.
+// ------------------------------------------------------------
+test("osSalvar pendente grava a data de vencimento em servicos.data_vencimento", async function () {
+  const { window, doc, registro } = await abrirFormularioOS()
+
+  definirCampo(doc, "osTitulo", "Servico fiado")
+  definirCampo(doc, "osMaoObra", "100,00")
+  definirCampo(doc, "osStatus", "orcamento")
+  definirCampo(doc, "osStatusPag", "pendente")
+  window.eval("osAtualizarVencimento()")
+  const campo = doc.getElementById("osVencimentoCampo")
+  assert.notStrictEqual(campo.style.display, "none", "campo de vencimento visivel em pendente")
+  definirCampo(doc, "osVencimento", "2026-11-20")
+
+  await window.eval("osSalvar()")
+  await esperarAssentar(window)
+
+  const inseridos = registro.insert.servicos || []
+  assert.strictEqual(inseridos.length, 1, "deve inserir 1 servico")
+  assert.strictEqual(
+    inseridos[0].data_vencimento,
+    "2026-11-20",
+    "grava a data de vencimento informada",
+  )
+})
+
+test("osSalvar pago NAO grava data de vencimento", async function () {
+  const { window, doc, registro } = await abrirFormularioOS()
+
+  definirCampo(doc, "osTitulo", "Servico pago")
+  definirCampo(doc, "osMaoObra", "100,00")
+  definirCampo(doc, "osStatus", "orcamento")
+  definirCampo(doc, "osStatusPag", "pago")
+  definirCampo(doc, "osValorPago", "100,00")
+  window.eval("osAtualizarVencimento()")
+  const campo = doc.getElementById("osVencimentoCampo")
+  assert.strictEqual(campo.style.display, "none", "campo oculto quando pago")
+
+  await window.eval("osSalvar()")
+  await esperarAssentar(window)
+
+  const inseridos = registro.insert.servicos || []
+  assert.strictEqual(inseridos.length, 1, "deve inserir 1 servico")
+  assert.strictEqual(
+    inseridos[0].data_vencimento || null,
+    null,
+    "sem vencimento quando pago",
   )
 })

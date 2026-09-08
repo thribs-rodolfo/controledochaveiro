@@ -1,0 +1,91 @@
+{
+  "name": "Aviso de Ativacao - Controle do Chaveiro",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "aviso-ativacao-chaveiro",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "webhook-aviso",
+      "name": "Recebe Aviso (Webhook)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [240, 300],
+      "webhookId": "aviso-ativacao-chaveiro"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "CREATE TABLE IF NOT EXISTS ativacoes (\n  id            BIGSERIAL PRIMARY KEY,\n  nome_chaveiro TEXT,\n  cidade        TEXT,\n  whatsapp      TEXT,\n  codigo_instalacao TEXT UNIQUE,\n  data_ativacao TIMESTAMPTZ,\n  recebido_em   TIMESTAMPTZ NOT NULL DEFAULT now()\n);",
+        "additionalFields": {}
+      },
+      "id": "cria-tabela",
+      "name": "Garante Tabela (CREATE TABLE)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [520, 300],
+      "credentials": {
+        "postgres": {
+          "id": "PREENCHER_CREDENCIAL_POSTGRES",
+          "name": "Postgres da MyKey (preencher)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO ativacoes (nome_chaveiro, cidade, whatsapp, codigo_instalacao, data_ativacao)\nVALUES ($1, $2, $3, $4, NULLIF($5, '')::timestamptz)\nON CONFLICT (codigo_instalacao) DO UPDATE SET\n  nome_chaveiro = EXCLUDED.nome_chaveiro,\n  cidade        = EXCLUDED.cidade,\n  whatsapp      = EXCLUDED.whatsapp,\n  data_ativacao = EXCLUDED.data_ativacao,\n  recebido_em   = now();",
+        "additionalFields": {
+          "queryParams": "={{ $json.body.nome_chaveiro }},{{ $json.body.cidade }},{{ $json.body.whatsapp }},{{ $json.body.codigo_instalacao }},{{ $json.body.data_ativacao }}"
+        }
+      },
+      "id": "grava-ativacao",
+      "name": "Grava Ativacao (INSERT)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [800, 300],
+      "credentials": {
+        "postgres": {
+          "id": "PREENCHER_CREDENCIAL_POSTGRES",
+          "name": "Postgres da MyKey (preencher)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "SUBSTITUA ESTE NO PELA SUA NOTIFICACAO\n\nTroque este no de \"No Operation\" pelo no do canal onde voce quer ser avisado (Telegram, WhatsApp, e-mail, Slack, Discord...).\n\nUse esta mensagem sugerida (ja monta o texto a partir do webhook):\n\n{{ $node[\"Recebe Aviso (Webhook)\"].json.body.nome_chaveiro }}, de {{ $node[\"Recebe Aviso (Webhook)\"].json.body.cidade }}, ativou o Controle do Chaveiro. WhatsApp: {{ $node[\"Recebe Aviso (Webhook)\"].json.body.whatsapp }}",
+        "height": 260,
+        "width": 360
+      },
+      "id": "nota-notificacao",
+      "name": "COMO CONFIGURAR A NOTIFICACAO",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [1060, 120]
+    },
+    {
+      "parameters": {},
+      "id": "notifica-thiago",
+      "name": "Notifica Thiago (PLACEHOLDER - trocar pelo seu canal)",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [1080, 400]
+    }
+  ],
+  "connections": {
+    "Recebe Aviso (Webhook)": {
+      "main": [[{ "node": "Garante Tabela (CREATE TABLE)", "type": "main", "index": 0 }]]
+    },
+    "Garante Tabela (CREATE TABLE)": {
+      "main": [[{ "node": "Grava Ativacao (INSERT)", "type": "main", "index": 0 }]]
+    },
+    "Grava Ativacao (INSERT)": {
+      "main": [[{ "node": "Notifica Thiago (PLACEHOLDER - trocar pelo seu canal)", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": {},
+  "pinData": {}
+}

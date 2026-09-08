@@ -1,102 +1,168 @@
-NOVIDADES DO CONTROLE DO CHAVEIRO  —  atualização de 31 de julho de 2026
-(versão online / navegador)   —   ATUALIZAÇÃO GRATUITA
+NOVIDADES DO CONTROLE DO CHAVEIRO  —  atualização de 27 de agosto de 2026
+(versão online / navegador)
+
+Correções e melhorias desta atualização:
+
+MODO OFFLINE — TRABALHE SEM INTERNET E SINCRONIZE AO VOLTAR
+   Agora, se a internet cair, o sistema continua funcionando: aparece um aviso
+   discreto "sem conexão — trabalhando local", as telas seguem abrindo com os
+   últimos dados, e o que você registrar (vendas, ordens, clientes) fica salvo
+   no aparelho. Quando a conexão volta, tudo é enviado sozinho, na ordem certa.
+   Observação: cadastro de funcionário precisa de conexão (por segurança).
+
+DESCONTO DA ORDEM DE SERVIÇO AGORA ENTRA NO TOTAL
+   Corrigido: na Ordem de Serviço, o desconto (em R$ ou %) agora é descontado
+   do total corretamente. Antes o valor digitado não era considerado e o total
+   saía sem o desconto.
+
+GARANTIA IMPRESSA NO ORÇAMENTO E NO RECIBO
+   Agora a garantia aparece no orçamento e no recibo, na bobina térmica e no
+   A4. Sai em número de dias e por extenso (ex.: "Garantia: 90 dias (noventa
+   dias)"). O valor vem da "Garantia padrão (dias)" em Configurações → Regras
+   de Negócio. Se a garantia estiver em 0, nada é impresso.
+   Sugestão da SOS CAR (Parnamirim-RN). Obrigado! 🤝
+
+
+NOVIDADES DO CONTROLE DO CHAVEIRO  —  atualização de 24 de agosto de 2026
+(versão online / navegador)
+
+Correções e melhorias desta atualização:
+
+TAXA DE CARTÃO (VALOR LÍQUIDO)
+   Cada forma de pagamento agora pode ter uma taxa (o percentual que a máquina
+   de cartão desconta). Ao registrar um pagamento em cartão, o Financeiro passa
+   a mostrar o valor líquido — o que realmente cai no caixa depois da taxa. A
+   taxa é definida no cadastro de cada forma de pagamento (deixe 0 para
+   dinheiro, Pix e afins).
+   * Para ativar, rode a atualização do banco (atualizar-banco.sql) no Supabase
+     de cada cliente. Sem rodar, o programa continua funcionando pelo jeito
+     antigo (a taxa fica valendo como 0 e nada quebra).
+   Sugestão do MARIO ALVES (chaveiro Califórnia). Obrigado! 🤝
+
+SELETOR DE FUNCIONÁRIO NA VENDA E NA ORDEM DE SERVIÇO
+   A Venda Rápida e a Ordem de Serviço ganharam um seletor de funcionário: dá
+   para escolher quem fez a venda/serviço sem precisar sair e entrar de outro
+   login. Por padrão vem o funcionário que está logado.
+
+MOVIMENTAÇÃO DENTRO DO MÓDULO ESTOQUE
+   A tela de Estoque ganhou o botão "Registrar movimentação": escolha o produto
+   e registre entrada, saída ou ajuste ali mesmo, sem precisar ir pela lista de
+   produtos.
+
+MÁSCARA DE TELEFONE PADRONIZADA
+   Todos os campos de telefone (cliente, empresa, fabricante e ativação) usam a
+   mesma máscara (00) 00000-0000.
+
+BOTÕES MAIS CLAROS
+   O botão de movimentar estoque na lista de produtos ganhou rótulo de texto, e
+   o botão de excluir lançamento no Financeiro ganhou dica ao passar o mouse.
+
+ORÇAMENTO NÃO CORTA COM NOME DE LOJA GRANDE
+   Quando o nome da loja é muito grande, ele agora é encurtado na mensagem do
+   orçamento pelo WhatsApp, para não estourar o limite e cortar o resto.
+
+TEMA ESCURO MAIS CONSISTENTE
+   Ajustamos o tema escuro: alguns trechos ainda apareciam com fundo branco
+   (campos de digitação, cabeçalho, janelas de aviso, tela de login e ativação,
+   lista de sugestões e o resumo do estoque). Agora todos acompanham o tema
+   escolhido, sem manchas claras. O tema claro continua igual.
+
+
+NOVIDADES DO CONTROLE DO CHAVEIRO  —  atualização de 22 de agosto de 2026
+(versão online / navegador)
+
+Novidades desta atualização (deixando as duas versões — computador e online —
+com os mesmos recursos):
+
+FINANCEIRO MAIS COMPLETO
+   O Financeiro agora tem CATEGORIAS de receita e despesa, PARCELAMENTO
+   (divide um valor em várias parcelas mensais) e CONTAS A PAGAR/RECEBER: um
+   lançamento pode entrar como pendente (com data de vencimento) e ser quitado
+   depois com um clique. O resumo passou a mostrar "A receber" e "A pagar",
+   e há um filtro por situação (pagos / pendentes).
+   * Para ativar, rode a atualização do banco (arquivo atualizar-banco.sql) no
+     Supabase de cada cliente. Sem rodar, o programa continua funcionando pelo
+     jeito antigo (não quebra nada).
+
+E-MAIL DO CLIENTE
+   O cadastro de cliente ganhou o campo de e-mail.
+
+DATA PREVISTA NA ORDEM DE SERVIÇO
+   A OS agora tem data prevista de entrega/conclusão.
+
+DÉBITO E CARTÃO PARCELADO
+   As formas de pagamento passaram a incluir Cartão de Débito, Cartão de
+   Crédito e Cartão Parcelado. Sugestão da Seilma Santos.
+
+TEMA CLARO OU ESCURO
+   Você escolhe entre tema claro e escuro no botão da barra lateral; a escolha
+   fica guardada no seu navegador.
+
+ITENS DA ORDEM NA LISTA
+   Na lista de ordens de serviço, cada linha mostra até 2 produtos da ordem;
+   havendo mais, aparecem reticências e um atalho para abrir a ordem completa.
+   Sugestão de Rodrigo dos Santos Melo e Seilma Santos.
+
+FILTRO DE ESTOQUE BAIXO E PAINEL AJUSTÁVEL
+   A lista de produtos ganhou o filtro "Só estoque baixo" e o Painel deixa
+   você escolher quantos itens mostrar nas listas. Sugestões de Rodrigo dos
+   Santos Melo.
+
+────────────────────────────────────────────────────────────────────────
+
+NOVIDADES DO CONTROLE DO CHAVEIRO  —  atualização de 22 de agosto de 2026
+(versão online / navegador)
 
 O que mudou nesta atualização:
 
-PAINEL AGORA RESPEITA O CONTROLE DE ACESSO
-   O Painel (dashboard) deixou de aparecer para quem não deveria ver.
-   Agora ele é um módulo controlado como os outros: só quem tem o
-   acesso liberado entra. E os valores de faturamento/receita são uma
-   permissão à parte — por padrão, quem não é administrador NÃO vê os
-   valores. Ao descartar uma venda rápida, o sistema não cai mais no
-   Painel restrito: volta para a primeira tela que o funcionário pode ver.
+LOGIN MAIS SEGURO
+   Antes, a senha do funcionário era conferida no navegador e trafegava em
+   texto — dava pra tentar adivinhar de fora. Agora a conferência é feita no
+   servidor e a senha é guardada de forma embaralhada (nunca em texto puro).
+   * Para ficar ativo, rode a atualização do banco (arquivo atualizar-banco.sql) no Supabase de
+     cada cliente. As senhas que já existem são convertidas sozinhas. Sem rodar
+     o atualizar-banco.sql, o programa continua entrando pelo jeito antigo (não quebra nada).
 
-ORDEM DE SERVIÇO PAGA SEMPRE GERA LANÇAMENTO
-   Se o lançamento financeiro de uma OS falhasse, o erro passava
-   despercebido e a OS ficava paga sem aparecer no caixa. Agora, se o
-   lançamento falhar, o sistema avisa na hora (não deixa passar em
-   silêncio). E o Relatório passou a conferir e sinalizar automaticamente
-   qualquer OS paga que tenha ficado sem lançamento, para você regularizar.
+ACESSO DO FUNCIONÁRIO CORRIGIDO
+   Corrigimos uma falha em que módulos que o administrador havia desmarcado
+   voltavam a aparecer para o funcionário (ao entrar ou ao atualizar a página).
+   Agora o menu já nasce com as permissões certas, sem "piscar" itens
+   bloqueados. Obrigado ao Andre Anderson pelo relato.
 
---------------------------------------------------------------------------
+MAIS ESTÁVEL POR DENTRO
+   A lista de ordens de serviço não quebra mais se for atualizada fora do seu
+   contexto (robustez interna, sem mudança visível para você).
 
-NOVIDADES DO CONTROLE DO CHAVEIRO  —  atualização de julho de 2026
-(versão online / navegador)
+────────────────────────────────────────────────────────────────────────
 
-O que mudou nesta versão:
+NOVIDADES DO CONTROLE DO CHAVEIRO  —  atualização de 03 de agosto de 2026
+(versão online / navegador)   —   versão 8 do banco
 
-ESTOQUE DA ORDEM DE SERVIÇO  —  baixa e devolução corrigidas
-   Ao DAR BAIXA numa ordem de serviço, o estoque das peças agora abaixa
-   de verdade. E ao CANCELAR uma OS que já estava concluída, as peças
-   voltam para o estoque automaticamente (antes não voltavam).
+O que mudou nesta atualização (segurança do caixa e do estoque):
 
-DESCONTO NO TOTAL
-   Dá para aplicar um desconto no total — tanto na venda rápida (PDV)
-   quanto na ordem de serviço.
+TUDO GRAVADO DE UMA VEZ SÓ (OU NADA) — GRAVAÇÃO ATÔMICA
+   Ao finalizar uma venda rápida, salvar uma OS ou dar baixa, o sistema
+   agora grava a ordem, a baixa de estoque e o lançamento financeiro numa
+   ÚNICA operação no banco. Se qualquer parte falhar, TUDO é desfeito —
+   nunca mais fica uma OS concluída sem baixar o estoque, nem uma OS paga
+   sem aparecer no caixa.
+   * Isto exige rodar a atualização do banco (arquivo atualizar-banco.sql) no Supabase de
+     cada cliente. Sem rodar, o sistema ainda funciona pelo caminho antigo
+     (que agora também avisa erros); rodando o atualizar-banco.sql, ganha a proteção total.
 
-COMISSÃO DO VENDEDOR
-   Cada funcionário pode ter um percentual de comissão sobre as vendas dele.
+FIM DOS FALSOS SUCESSOS
+   Se uma gravação de estoque ou financeiro falhasse por queda de conexão,
+   antes o sistema podia dizer "pronto" sem ter salvo. Agora toda falha é
+   detectada na hora e avisada — nada passa em silêncio.
 
-FOTOS
-   Você pode anexar uma imagem ao produto (aparece como miniatura na lista
-   e na venda rápida) e também fotos ao pedido/ordem de serviço.
+TRAVA CONTRA DUPLO-CLIQUE
+   Clicar duas vezes rápido em "Dar baixa", "Excluir" ou "Salvar" não lança
+   mais o recebimento (ou o estorno) em dobro. O botão trava até terminar.
 
-FIADO / PENDENTE
-   O valor já pago de uma venda fiado/pendente pode ser editado depois.
+RELATÓRIO CONFERE O ESTOQUE
+   Além de apontar OS pagas sem lançamento (já existia), o Relatório agora
+   também aponta OS concluídas que ficaram SEM a baixa de estoque, com um
+   botão para registrar a baixa que faltou e acertar o estoque.
 
-RELATÓRIO E FECHAMENTO DE CAIXA
-   O relatório agora tem filtros por funcionário e por forma de pagamento,
-   e o fechamento de caixa separa o que veio de ordem de serviço do que
-   veio de venda.
+────────────────────────────────────────────────────────────────────────
 
-FALTA DE INTERNET NÃO CAI MAIS NA TELA DE ATIVAÇÃO
-   Quando é só a conexão que falhou, o sistema avisa "sem conexão" em vez
-   de pedir para ativar de novo.
-
-NOME E CÓDIGO DE BARRAS SEPARADOS
-   O código lido pelo leitor não se confunde mais com o nome do produto —
-   a identificação fica no Nome; o código de barras é um campo à parte.
-
-HISTÓRICO DA ORDEM DE SERVIÇO
-   Cada OS mostra uma linha do tempo com o que aconteceu (aberta, concluída,
-   cancelada, pagamentos).
-
-TIPOS DE PRODUTO EDITÁVEIS
-   Agora VOCÊ cria e edita os tipos de produto (chave, fechadura, serviço,
-   gás... e os que quiser). Deixaram de ser uma lista fixa: use a tela
-   "Tipos de Produto" para adicionar o que precisar — sem depender de uma
-   nova versão do sistema.
-
-QUANDO O TIPO É "SERVIÇO", SEM CUSTO NEM ESTOQUE
-   Ao marcar um produto como serviço, os campos de preço de custo e de
-   estoque somem — serviço não tem estoque para controlar.
-
-VALOR TOTAL EM ESTOQUE
-   Na tela de estoque aparece o valor total dos produtos que você tem em
-   estoque — ao custo e a preço de venda.
-
-CONFIGURAÇÃO SEPARADA (não perde a chave ao atualizar)
-   Os dados do seu Supabase (endereço e chave) agora ficam num arquivo à
-   parte, o "configuracao.js", preenchido UMA vez. Nas próximas atualizações
-   você troca só o index.html e a sua configuração é preservada — não precisa
-   colar a chave de novo.
-
-------------------------------------------------------------------
-IMPORTANTE — ATUALIZE O BANCO DE DADOS
-
-Esta versão usa a versão 6 do banco.
-
-  • ATUALIZANDO de uma versão anterior:
-      rode o arquivo  02-atualizar-banco.sql  no Supabase (aba SQL).
-      Pode rodar sem medo mesmo que já tenha rodado antes.
-      O próprio sistema avisa se o banco estiver desatualizado.
-
-  • INSTALAÇÃO NOVA:
-      rode apenas o  01-criar-banco.sql.
-
-Passo a passo nos guias  GUIA-ATUALIZACAO.txt  e  GUIA-INSTALACAO.txt.
-------------------------------------------------------------------
-
-Lembrete: cada chaveiro usa o SEU próprio projeto Supabase. Preencha o
-endereço e a chave do seu Supabase no arquivo "configuracao.js" (uma vez;
-instruções no próprio arquivo e no GUIA-INSTALACAO.txt).

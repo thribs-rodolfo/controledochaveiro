@@ -5,7 +5,7 @@
 Você recebeu o seu Controle do Chaveiro. Comece por aqui.
 
 ORDEM RECOMENDADA (siga o GUIA-INSTALACAO.txt — passo a passo completo):
-1. Crie seu banco no Supabase e rode o arquivo "01-criar-banco.sql"
+1. Crie seu banco no Supabase e rode o arquivo "criar-banco.sql"
    (está aqui nesta pasta) no SQL Editor.
 2. Cole a URL e a chave (publishable) do Supabase no "configuracao.js"
    (arquivo separado da configuração; você preenche uma vez).
@@ -22,8 +22,8 @@ ARQUIVOS DESTA PASTA:
 - index.html ............. o sistema (vai pro Netlify)
 - configuracao.js ........ SUA URL e chave do Supabase (preencher uma vez;
                           NÃO é trocado nas atualizações)
-- 01-criar-banco.sql ..... cria o banco NOVO (rodar no Supabase)
-- 02-atualizar-banco.sql . atualiza um banco que já existe (não apaga dados)
+- criar-banco.sql ..... cria o banco NOVO (rodar no Supabase)
+- atualizar-banco.sql . atualiza um banco que já existe (não apaga dados)
 - GUIA-INSTALACAO.txt ..... passo a passo de instalação (comece por ele)
 - GUIA-ATUALIZACAO.txt .... passo a passo para atualizar a versão
 - MANUAL-DE-USO.txt ....... como usar o sistema no dia a dia

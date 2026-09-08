@@ -7,10 +7,11 @@
 // EXECUTANDO de verdade (globais externos dublados). Eles verificam o que o
 // `node --check` NÃO pega: id duplicado por formulário e recálculo errado.
 //
-// O caso que originou a suite: id="osDesc" usado na DESCRIÇÃO e no DESCONTO da
-// OS ao mesmo tempo. getElementById devolve o primeiro (a textarea), então o
-// desconto nunca recalculava. O teste (a) pega o id duplicado; o teste (b)
-// pega o efeito: o Total não reflete o desconto.
+// O caso que originou a suite: id="osDesc" era usado na DESCRIÇÃO e no DESCONTO
+// da OS ao mesmo tempo. getElementById devolvia o primeiro (a textarea), então o
+// desconto nunca recalculava. Já corrigido (o desconto virou #osDesconto): o
+// teste (a) guarda contra id duplicado; o teste (b) confirma que o Total reflete
+// o desconto.
 // ============================================================
 
 const { test } = require("node:test")
@@ -95,21 +96,16 @@ test("ambiente: o app carrega e expõe as funções de formulário", async funct
 
 // ------------------------------------------------------------
 // (a) NENHUM formulário/modal pode ter id duplicado.
-//     Este bloco é o que PEGA o osDesc duplicado.
+//     Guarda contra a regressão do osDesc duplicado (já corrigido).
 // ------------------------------------------------------------
 FORMULARIOS_MODAL.forEach(function (nomeForm) {
-  // BUG REAL CONHECIDO (presente no canônico E no alterado): o formulário da
-  // OS (osForm) renderiza dois elementos com id="osDesc" (a textarea de
-  // descrição e o input numérico de desconto). Por isso getElementById pega
-  // sempre a textarea e o desconto da OS não recalcula. O teste ASSERTA de
-  // verdade e continua rodando; fica marcado como `todo` para reportar o bug
-  // sem mascarar a suíte de verde. Corrigir o index.html o destrava.
-  const opcoes = nomeForm === "osForm"
-    ? { todo: "BUG: id 'osDesc' duplicado no osForm (descrição vs. desconto)" }
-    : {}
+  // Historicamente o osForm renderizava dois elementos com id="osDesc" (a
+  // textarea de descrição e o input de desconto), então getElementById pegava
+  // sempre a textarea e o desconto da OS não recalculava. Corrigido: o campo de
+  // desconto agora é #osDesconto. Este teste garante que nenhum formulário
+  // volte a ter id duplicado.
   test(
     "sem id duplicado no formulário: " + nomeForm,
-    opcoes,
     async function () {
       const { window, doc } = await prepararApp()
       // catForm/funcForm etc. usam modal normal; clienteForm/chaveForm sem
@@ -151,12 +147,9 @@ test("sem id duplicado na tela de PDV (pagePDV)", async function () {
 // ------------------------------------------------------------
 // (b) Comportamento do DESCONTO da OS: o Total tem que refletir
 //     subtotal − desconto (e NÃO ficar igual ao subtotal).
-//     Com o id duplicado, osRecalc lê a textarea (vazia) e o desconto
-//     não aplica — este teste falha exatamente nesse cenário.
+//     O desconto é lido de #osDesconto; a descrição fica em #osDesc.
 // ------------------------------------------------------------
-test("desconto da OS em R$: Total reflete subtotal − desconto", {
-  todo: "BUG: id 'osDesc' duplicado faz osRecalc ler a textarea; desconto não aplica",
-}, async function () {
+test("desconto da OS em R$: Total reflete subtotal − desconto", async function () {
   const { window, doc } = await prepararApp()
   window.eval("osForm()")
 
@@ -176,14 +169,12 @@ test("desconto da OS em R$: Total reflete subtotal − desconto", {
     "R$ 70,00",
     "Total deveria ser R$ 70,00 (100 − 30). Veio '" +
       total +
-      "'. Se veio 'R$ 100,00', o desconto não recalculou (id 'osDesc' " +
-      "provavelmente duplicado: getElementById pegou a textarea da descrição).",
+      "'. Se veio 'R$ 100,00', o desconto não recalculou (osRecalc deveria " +
+      "ler o campo #osDesconto).",
   )
 })
 
-test("desconto da OS em %: Total reflete subtotal − percentual", {
-  todo: "BUG: id 'osDesc' duplicado faz osRecalc ler a textarea; desconto não aplica",
-}, async function () {
+test("desconto da OS em %: Total reflete subtotal − percentual", async function () {
   const { window, doc } = await prepararApp()
   window.eval("osForm()")
   doc.getElementById("osMaoObra").value = "200,00"

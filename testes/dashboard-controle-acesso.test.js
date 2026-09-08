@@ -19,6 +19,105 @@ const { test } = require("node:test")
 const assert = require("node:assert")
 const { montarAmbiente, esperarAssentar } = require("./ambiente")
 
+// ============================================================
+// Regressões de CONTROLE DE ACESSO relatadas por Andre Anderson:
+//   Bug 1 (flash): módulos não autorizados apareciam por alguns frames porque
+//                  o menu era revelado (#app.show) ANTES de esconder os módulos.
+//   Bug 2 (refresh): atualizar a página (F5) fazia os módulos desmarcados
+//                    voltarem — a restauração da sessão não trazia 'permissoes'
+//                    do banco, caindo no preset do perfil.
+// ============================================================
+
+// (F1) Sem flash: quando entrarNoApp roda, os itens de menu não autorizados já
+// estão escondidos ANTES de o #app ficar visível (não renderiza tudo e esconde
+// depois). Provamos verificando que, no instante em que o app é revelado, o
+// item 'Produtos' (chaves) — desmarcado para este operador — está display:none.
+test("Flash: menu já nasce filtrado antes de o app aparecer (Produtos escondido)", async function () {
+  const { window, dom } = await montarAmbiente()
+  const doc = dom.window.document
+  // Operador SEM 'chaves' (Produtos), como no relato (admin desmarcou Produtos).
+  window.eval(
+    "SESSAO = { id: 7, perfil: 'operador', nome: 'Operador'," +
+      " permissoes: JSON.stringify(['pdv','servicos','clientes','equivalencias']) };",
+  )
+  const appEl = doc.getElementById("app")
+  const linkProdutos = doc.querySelector('#nav a[data-page="chaves"]')
+  // Sentinela: no exato momento em que o app ganha a classe 'show', o item
+  // Produtos JÁ tem de estar escondido. Se estivesse visível aqui, seria o flash.
+  let produtosEscondidoQuandoApareceu = null
+  const observer = new dom.window.MutationObserver(function () {
+    if (appEl.classList.contains("show") && produtosEscondidoQuandoApareceu === null) {
+      produtosEscondidoQuandoApareceu = linkProdutos.style.display === "none"
+    }
+  })
+  observer.observe(appEl, { attributes: true, attributeFilter: ["class"] })
+  await window.eval("entrarNoApp()")
+  await esperarAssentar(window)
+  observer.disconnect()
+  assert.strictEqual(
+    produtosEscondidoQuandoApareceu,
+    true,
+    "Produtos deveria já estar escondido no instante em que o app apareceu (sem flash)",
+  )
+  // E ao final continua escondido.
+  assert.strictEqual(
+    linkProdutos.style.display,
+    "none",
+    "Produtos (desmarcado) não pode ficar visível no menu do operador",
+  )
+})
+
+// (F2) Refresh: a restauração da sessão no init() traz 'permissoes' do banco,
+// então módulos desmarcados (Produtos) NUNCA voltam a aparecer após um F5.
+test("Refresh: init() restaura as permissoes do funcionário (Produtos continua bloqueado)", async function () {
+  const { window, clienteFake } = await montarAmbiente()
+  // Simula o refresh: há uma sessão salva (só o id importa para o init buscar).
+  window.eval(
+    "SESSAO = { id: 7, perfil: 'operador', nome: 'Operador' };" +
+      "localStorage.setItem('chaveiro_sessao', JSON.stringify(SESSAO));",
+  )
+  // O banco (fake) devolve o funcionário COM as permissoes reais — Produtos
+  // (chaves) NÃO está entre elas. É exatamente o que o select do init precisa ler.
+  clienteFake.__registro.__loginUser = {
+    id: 7,
+    usuario: "operador",
+    nome: "Operador",
+    perfil: "operador",
+    ativo: true,
+    permissoes: JSON.stringify(["pdv", "servicos", "clientes", "equivalencias"]),
+  }
+  // Faz o banco fake respeitar a projeção do .select(): se o app NÃO pedir a
+  // coluna 'permissoes' no refresh (o bug), ela não vem — e o teste falha. Assim
+  // este teste prova a correção do select do init().
+  clienteFake.__registro.__projetarSelect = true
+  // Ativação e login-por-refresh: sela a ativação como válida para o init seguir
+  // até o ramo de restauração da sessão (sem depender de crypto/licenças reais).
+  window.eval("estadoAtivacao = async function () { return 'ativado' }")
+  window.eval("consolidarAtualizacao = async function () {}")
+  window.eval("testarConexao = async function () {}")
+  await window.eval("init()")
+  await esperarAssentar(window)
+  await esperarAssentar(window)
+  // As permissoes personalizadas foram restauradas (não caiu no preset do perfil).
+  const permissoesRestauradas = window.eval(
+    "SESSAO && SESSAO.permissoes ? SESSAO.permissoes : null",
+  )
+  assert.ok(
+    permissoesRestauradas,
+    "após o refresh, SESSAO.permissoes deve ser restaurado do banco (não undefined)",
+  )
+  assert.ok(
+    !JSON.parse(permissoesRestauradas).includes("chaves"),
+    "as permissoes restauradas NÃO devem incluir 'chaves' (Produtos foi desmarcado)",
+  )
+  // E o gating reflete isso: sem acesso a Produtos.
+  assert.strictEqual(
+    window.eval("temAcesso('chaves')"),
+    false,
+    "após o refresh, o operador NÃO pode ter acesso a Produtos (chaves)",
+  )
+})
+
 // Semeia o CACHE mínimo que o renderDashboard() usa e define a SESSAO pedida.
 // Injeta uma transação de entrada (faturamento) e uma de saída (despesa) com a
 // data de hoje, além de um serviço pendente (a receber). Se os cartões de

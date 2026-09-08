@@ -277,14 +277,21 @@ test("pdvFinish insere a venda em 'servicos' e registra movimentação de saída
   assert.strictEqual(movs[0].tipo, "saida", "movimentação é de saída")
   assert.strictEqual(movs[0].quantidade, 2, "baixa 2 unidades")
 
-  // 3) update de estoque da chave (3 − 2 = 1)
-  const updates = registro.update.chaves || []
-  assert.ok(
-    updates.some(function (u) {
-      return u && u.estoque === 1
-    }),
-    "estoque atualizado para 1",
+  // 3) Commit C: NÃO edita mais chaves.estoque no cliente (fonte única =
+  // movimentação + trigger). O update redundante foi removido.
+  const updatesEstoque = (registro.update.chaves || []).filter(function (u) {
+    return u && Object.prototype.hasOwnProperty.call(u, "estoque")
+  })
+  assert.strictEqual(
+    updatesEstoque.length,
+    0,
+    "não deve mais editar chaves.estoque no cliente",
   )
+  // O cache local reflete o derivado (3 − 2 = 1), espelhando o trigger.
+  const estoqueCache = window.eval(
+    "(CACHE.chaves.find(function(x){return x.id==10})||{}).estoque",
+  )
+  assert.strictEqual(estoqueCache, 1, "cache otimista: estoque da chave 10 = 1")
 
   // 4) financeiro lançado (venda paga por padrão → transacoes)
   const transacoes = registro.insert.transacoes || []
@@ -293,6 +300,92 @@ test("pdvFinish insere a venda em 'servicos' e registra movimentação de saída
 
   // 5) o carrinho é esvaziado após finalizar
   assert.strictEqual(window.eval("PDV_CART.length"), 0, "carrinho zerado após venda")
+})
+
+// ------------------------------------------------------------
+// (9b) Seletor de funcionário do PDV: a venda grava o funcionário ESCOLHIDO
+//      (não necessariamente o logado). Decisão do Joel.
+// ------------------------------------------------------------
+test("pdvFinish grava o funcionário escolhido no seletor (não só o logado)", async function () {
+  const { window, doc, registro } = await prepararPdv()
+  // Dois funcionários: logado (1) e outro (2). Como o Supabase dublado devolve
+  // lista vazia em carregarFuncionariosCache, semeamos o CACHE e remontamos as
+  // opções do seletor pelo helper REAL do app (optionsFuncionarios).
+  window.eval(
+    "CACHE.funcionarios = [" +
+      "  { id: 1, nome: 'Fulano', ativo: true }," +
+      "  { id: 2, nome: 'Ciclana', ativo: true }" +
+      "];" +
+      "document.getElementById('pdvFuncionario').innerHTML =" +
+      " optionsFuncionarios(SESSAO && SESSAO.id);",
+  )
+
+  const sel = doc.getElementById("pdvFuncionario")
+  assert.ok(sel, "faltou o seletor de funcionário do PDV (pdvFuncionario)")
+  // Duas opções disponíveis; o logado (1) vem selecionado por padrão.
+  assert.strictEqual(sel.options.length, 2, "seletor deve listar os 2 funcionários")
+  assert.strictEqual(sel.value, "1", "default = funcionário logado (id 1)")
+
+  // Escolhe OUTRO funcionário e finaliza a venda.
+  window.eval("document.getElementById('pdvFuncionario').value = '2'")
+  window.eval("pdvAddItem(CACHE.chaves.find(function(k){return k.id===10}))")
+  await window.eval("pdvFinish()")
+  await esperarAssentar(window)
+  await esperarAssentar(window)
+
+  const vendas = registro.insert.servicos || []
+  assert.strictEqual(vendas.length, 1, "uma venda gravada")
+  assert.strictEqual(
+    vendas[0].funcionario_id,
+    2,
+    "a venda grava o funcionário ESCOLHIDO (id 2), não o logado (id 1)",
+  )
+})
+
+// ------------------------------------------------------------
+// (9c) Taxa de cartão: a venda paga em forma com taxa grava o valor LÍQUIDO
+//      (total menos a taxa) em transacoes.valor_liquido. Dinheiro (taxa 0) fica
+//      com líquido = valor.
+// ------------------------------------------------------------
+test("pdvFinish grava o valor líquido descontando a taxa da forma de pagamento", async function () {
+  const { window, doc, registro } = await prepararPdv()
+  // Forma com taxa de 10% e uma sem taxa. taxaDaForma/liquidoComTaxa leem daqui.
+  window.eval(
+    "CACHE.formas = [" +
+      "  { id: 1, nome: 'Dinheiro', taxa_percentual: 0, ativo: true }," +
+      "  { id: 2, nome: 'Cartão de Crédito', taxa_percentual: 10, ativo: true }" +
+      "];",
+  )
+  // Helpers puros: 100 a 10% → líquido 90; sem taxa → 100.
+  assert.strictEqual(
+    window.eval("liquidoComTaxa(100, 'Cartão de Crédito')"),
+    90,
+    "líquido de 100 a 10% deve ser 90",
+  )
+  assert.strictEqual(
+    window.eval("liquidoComTaxa(100, 'Dinheiro')"),
+    100,
+    "sem taxa, líquido = valor",
+  )
+
+  // Escolhe a forma com taxa e finaliza (item físico id 10, preço 10, qtd 2 = 20).
+  doc.getElementById("pdvPay").innerHTML =
+    "<option value='Cartão de Crédito'>Cartão de Crédito</option>"
+  doc.getElementById("pdvPay").value = "Cartão de Crédito"
+  adicionar(window, 10)
+  window.eval("pdvSetQty(0, 2)")
+  await window.eval("pdvFinish()")
+  await esperarAssentar(window)
+  await esperarAssentar(window)
+
+  const transacoes = registro.insert.transacoes || []
+  assert.strictEqual(transacoes.length, 1, "uma transação lançada")
+  assert.strictEqual(transacoes[0].valor, 20, "valor bruto = 20")
+  assert.strictEqual(
+    transacoes[0].valor_liquido,
+    18,
+    "valor líquido = 20 − 10% = 18",
+  )
 })
 
 // ------------------------------------------------------------
@@ -326,4 +419,117 @@ test("pdvScan encontra o produto pelo código e sucessivos bips somam a quantida
   window.eval("pdvScan()")
   assert.strictEqual(window.eval("PDV_CART.length"), 1, "continua uma linha")
   assert.strictEqual(window.eval("PDV_CART[0].quantidade"), 2, "quantidade somou para 2")
+})
+
+// ------------------------------------------------------------
+// (12) pdvScan aceita produtos SEM código: um item de código vazio, cujo
+// termo só aparece na descrição, NÃO pode ficar escondido por um homônimo
+// que tenha o código preenchido. Antes havia busca em dois estágios (código
+// exato curto-circuitava e auto-selecionava). Cenário real relatado pelo LBS
+// (Luiz Barbosa da Silva): buscar "1001" precisa mostrar os DOIS itens.
+// ------------------------------------------------------------
+test("pdvScan lista TODOS os itens que casam, inclusive os de código vazio (cai no modal, não auto-seleciona)", async function () {
+  const { window, doc } = await prepararPdv()
+  // dois produtos "fechadura ... 1001": um com código '1001' e outro SEM código.
+  window.eval(
+    "CACHE.chaves = [" +
+      "  { id: 30, codigo: '1001', descricao: 'fechadura stam auxiliar fosco 1001', preco_venda: 50, estoque: 2, tipo_produto: 'chave', fabricante_id: 1 }," +
+      "  { id: 29, codigo: '', descricao: 'fechadura stam fosco auxiliar 1001', preco_venda: 50, estoque: 1, tipo_produto: 'chave', fabricante_id: 1 }" +
+      "];",
+  )
+  const input = doc.getElementById("pdvCode")
+  input.value = "1001"
+  window.eval("pdvScan()")
+
+  // NÃO auto-selecionou (carrinho segue vazio) e abriu o modal de seleção.
+  assert.strictEqual(window.eval("PDV_CART.length"), 0, "não auto-selecionou")
+  const modal = doc.getElementById("modal") || doc.body
+  const texto = modal.innerHTML
+  assert.ok(/2 chaves encontradas/.test(texto), "modal indica 2 chaves encontradas")
+  // ambos os itens (id 29 de código vazio e id 30) aparecem no modal.
+  assert.ok(/pdvPickFromModal\(30\)/.test(texto), "item de código '1001' (id 30) no modal")
+  assert.ok(/pdvPickFromModal\(29\)/.test(texto), "item SEM código (id 29) também no modal")
+
+  // ao escolher o de código vazio, ele entra no carrinho normalmente.
+  window.eval("pdvPickFromModal(29)")
+  assert.strictEqual(window.eval("PDV_CART.length"), 1, "item sem código foi adicionado")
+  assert.strictEqual(window.eval("PDV_CART[0].chave_id"), 29, "é o item de código vazio")
+})
+
+// ------------------------------------------------------------
+// (10) Data de vencimento na venda FIADO/PENDENTE: quando o pagamento nao e
+//      'pago' integral, o campo de vencimento aparece e a data e gravada em
+//      servicos.data_vencimento. Em 'pago' o campo fica oculto e nao grava.
+// ------------------------------------------------------------
+test("pdvFinish fiado grava a data de vencimento em servicos.data_vencimento", async function () {
+  const { window, doc, registro } = await prepararPdv()
+  adicionar(window, 10) // item fisico
+
+  // marca a venda como fiado e dispara o toggle que revela o campo.
+  doc.getElementById("pdvPayStatus").value = "fiado"
+  window.eval("pdvAtualizarVencimento()")
+  const campo = doc.getElementById("pdvVencimentoCampo")
+  assert.notStrictEqual(campo.style.display, "none", "campo de vencimento visivel em fiado")
+  doc.getElementById("pdvVencimento").value = "2026-09-30"
+
+  await window.eval("pdvFinish()")
+  await esperarAssentar(window)
+  await esperarAssentar(window)
+
+  // caminho FALLBACK (RPC dublado indisponivel): grava direto em servicos.
+  const vendas = registro.insert.servicos || []
+  assert.strictEqual(vendas.length, 1, "uma venda inserida")
+  assert.strictEqual(
+    vendas[0].data_vencimento,
+    "2026-09-30",
+    "grava a data de vencimento informada",
+  )
+})
+
+// Mesmo teste no CAMINHO RPC: o vencimento vai como p_data_vencimento.
+test("pdvFinish fiado via RPC passa p_data_vencimento", async function () {
+  const { window, doc, registro } = await prepararPdv()
+  registro.__rpcDisponivel = true
+  adicionar(window, 10)
+
+  doc.getElementById("pdvPayStatus").value = "pendente"
+  window.eval("pdvAtualizarVencimento()")
+  doc.getElementById("pdvVencimento").value = "2026-10-15"
+
+  await window.eval("pdvFinish()")
+  await esperarAssentar(window)
+  await esperarAssentar(window)
+
+  const chamada = (registro.rpc || []).find(function (r) {
+    return r.nome === "pdv_finalizar_venda"
+  })
+  assert.ok(chamada, "chamou pdv_finalizar_venda")
+  assert.strictEqual(
+    chamada.args.p_data_vencimento,
+    "2026-10-15",
+    "passa o vencimento ao RPC",
+  )
+})
+
+// Pago integral: campo oculto e vencimento nao e gravado (fica nulo).
+test("pdvFinish pago NAO grava data de vencimento (campo oculto)", async function () {
+  const { window, doc, registro } = await prepararPdv()
+  adicionar(window, 10)
+
+  doc.getElementById("pdvPayStatus").value = "pago"
+  window.eval("pdvAtualizarVencimento()")
+  const campo = doc.getElementById("pdvVencimentoCampo")
+  assert.strictEqual(campo.style.display, "none", "campo oculto quando pago")
+
+  await window.eval("pdvFinish()")
+  await esperarAssentar(window)
+  await esperarAssentar(window)
+
+  const vendas = registro.insert.servicos || []
+  assert.strictEqual(vendas.length, 1, "uma venda inserida")
+  assert.strictEqual(
+    vendas[0].data_vencimento || null,
+    null,
+    "sem vencimento quando pago",
+  )
 })

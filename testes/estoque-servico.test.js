@@ -49,10 +49,7 @@ function movimentacoesDaChave(registro, chaveId) {
 // ------------------------------------------------------------
 // (2) PDV render: serviço não mostra aviso ⚠️ de estoque.
 // ------------------------------------------------------------
-test("PDV carrinho: serviço não exibe aviso ⚠️; físico com estoque 0 exibe aviso", {
-  todo: "BUG no canônico: renderPdvCart não tem guarda por tipo_produto; serviço " +
-    "com estoque 0 mostra o aviso ⚠️. Corrigido no index alterado (guarda servico no ⚠️).",
-}, async function () {
+test("PDV carrinho: serviço não exibe aviso ⚠️; físico com estoque 0 exibe aviso", async function () {
   const { window, doc } = await prepararComProdutos()
   await window.eval("pagePDV()")
   await esperarAssentar(window)
@@ -83,9 +80,9 @@ test("PDV carrinho: serviço não exibe aviso ⚠️; físico com estoque 0 exib
   assert.ok(linhaServico, "não achei a linha do serviço no carrinho")
   assert.ok(linhaVariados, "não achei a linha do item variados no carrinho")
 
-  // Comportamento esperado (index alterado): o serviço NÃO mostra o aviso ⚠️
-  // de estoque insuficiente (é mão de obra, não há estoque a controlar). Ambas
-  // as versões mostram o texto "estoque:", mas só o alterado suprime o ⚠️.
+  // Comportamento esperado: o serviço NÃO mostra o aviso ⚠️ de estoque
+  // insuficiente (é mão de obra, não há estoque a controlar). O físico continua
+  // mostrando o "estoque:" e o ⚠️ quando falta estoque.
   assert.doesNotMatch(
     linhaServico.innerHTML,
     /⚠️/,
@@ -107,11 +104,7 @@ test("PDV carrinho: serviço não exibe aviso ⚠️; físico com estoque 0 exib
 // ------------------------------------------------------------
 // (3) PDV finalizar: serviço NÃO gera movimentação; físico gera.
 // ------------------------------------------------------------
-test("PDV finalizar venda: serviço não gera movimentação de estoque; físico gera", {
-  todo: "BUG no canônico: pdvFinish baixa estoque de TODO item com chave_id, sem " +
-    "guarda de serviço; serviço gera movimentação indevida. Corrigido no alterado " +
-    "(if k.tipo_produto === 'servico' continue).",
-}, async function () {
+test("PDV finalizar venda: serviço não gera movimentação de estoque; físico gera", async function () {
   const { window, doc, registro } = await prepararComProdutos()
   await window.eval("pagePDV()")
   await esperarAssentar(window)
@@ -189,10 +182,7 @@ test("PDV: vender serviço com estoque 0 em qualquer quantidade não impede a ve
 // ------------------------------------------------------------
 // (5) OS: concluir OS com serviço não gera movimentação; físico gera.
 // ------------------------------------------------------------
-test("OS concluir: item de serviço não baixa estoque; item físico baixa", {
-  todo: "BUG no canônico: osSalvar baixa estoque de TODO item com chave_id, sem " +
-    "guarda de serviço. Corrigido no index alterado (guarda tipo_produto === 'servico').",
-}, async function () {
+test("OS concluir: item de serviço não baixa estoque; item físico baixa", async function () {
   const { window, doc, registro } = await prepararComProdutos()
   // Abre a página de OS primeiro (cria os contêineres que osSalvar atualiza no fim).
   await window.eval("pageServicos()")
@@ -232,5 +222,55 @@ test("OS concluir: item de serviço não baixa estoque; item físico baixa", {
     1,
     "OS: item físico (chave_id 10) deveria baixar 1 saída de estoque. Gerou: " +
       JSON.stringify(movFisico),
+  )
+})
+
+// ------------------------------------------------------------
+// (6) REGRESSÃO task 457 ("estoque negativo em serviço"): concluir uma OS com
+//     um serviço cujo cadastro já está com estoque negativo (ex.: −2, o sintoma
+//     relatado) NÃO pode gerar mais movimentação de estoque nem mexer no cache.
+//     O serviço "Abertura de veículo" aparecia com estoque −2 porque baixava
+//     estoque como se fosse produto físico. A guarda de serviço corrige isso.
+// ------------------------------------------------------------
+test("REGRESSÃO 457: OS com serviço de estoque negativo não baixa estoque ao concluir", async function () {
+  const { window, doc, registro } = await prepararComProdutos()
+  await window.eval("pageServicos()")
+  await esperarAssentar(window)
+  semearCache(window)
+  semearProdutos(window)
+  // Reproduz o sintoma: o serviço (id 20) já está com estoque negativo no cache.
+  window.eval(
+    "CACHE.chaves.find(function (k) { return k.id === 20 }).estoque = -2",
+  )
+  window.eval("osForm()")
+
+  doc.getElementById("osTitulo").value = "Abertura de veículo"
+  doc.getElementById("osMaoObra").value = "80,00"
+  window.eval(
+    "OS_ITENS = [" +
+      "{ chave_id: 20, descricao: 'Abertura de veículo', quantidade: 1, preco_unit: 80 }" +
+      "]",
+  )
+  const selStatus = doc.getElementById("osStatus")
+  if (selStatus) selStatus.value = "concluido"
+
+  await window.eval("osSalvar()")
+  await esperarAssentar(window)
+
+  const movServico = movimentacoesDaChave(registro, 20)
+  assert.strictEqual(
+    movServico.length,
+    0,
+    "serviço com estoque negativo NÃO deveria gerar movimentação. Gerou: " +
+      JSON.stringify(movServico),
+  )
+  // O cache do serviço permanece intacto (não fica mais negativo do que estava).
+  const estoqueDepois = window.eval(
+    "CACHE.chaves.find(function (k) { return k.id === 20 }).estoque",
+  )
+  assert.strictEqual(
+    estoqueDepois,
+    -2,
+    "estoque do serviço não deveria ser alterado ao concluir a OS",
   )
 })

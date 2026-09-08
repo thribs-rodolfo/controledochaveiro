@@ -388,11 +388,14 @@ test("eqSalvar sem marca/modelo não insere equivalência", async function () {
 // FUNCIONÁRIOS
 // ============================================================
 
-// CASO 8 — funcSalvar (novo) → insert em "funcionarios" com usuario/nome/perfil.
-test("funcSalvar novo faz insert em funcionarios com usuario/nome/perfil", async function () {
+// CASO 8 — funcSalvar (novo) → chama o RPC funcionario_salvar, que
+// hasheia a senha NO SERVIDOR. O navegador NÃO faz mais insert direto na tabela
+// (não manda senha em texto puro pra uma coluna legível). Aqui provamos que o
+// caminho é a RPC, com os campos certos, e que a tabela não recebe insert cru.
+test("funcSalvar novo chama RPC funcionario_salvar com usuario/nome/perfil (sem insert cru)", async function () {
   const { window, doc, registro } = await montarSemeado()
 
-  // pageFuncionarios cria o container #funcList que o reload pós-insert
+  // pageFuncionarios cria o container #funcList que o reload pós-save
   // (carregarFuncionarios) precisa escrever; sem ele o app lançaria num timer.
   window.eval("pageFuncionarios()")
   await esperarAssentar(window)
@@ -407,16 +410,23 @@ test("funcSalvar novo faz insert em funcionarios com usuario/nome/perfil", async
   window.eval("funcSalvar(0)")
   await esperarAssentar(window)
 
-  const inserts = registro.insert["funcionarios"] || []
-  assert.strictEqual(inserts.length, 1, "deveria inserir 1 funcionário")
-  assert.strictEqual(inserts[0].usuario, "joao")
-  assert.strictEqual(inserts[0].nome, "João Silva")
-  assert.strictEqual(inserts[0].perfil, "operador")
-  assert.strictEqual(inserts[0].senha, "segredo123")
+  // NADA de insert direto na tabela funcionarios (a senha em texto puro não
+  // trafega pra uma coluna legível): tudo passa pelo RPC security definer.
+  assert.strictEqual(
+    (registro.insert["funcionarios"] || []).length,
+    0,
+    "não deve fazer insert cru em funcionarios (usa o RPC)",
+  )
+  const chamadas = registro.funcionarioSalvar || []
+  assert.strictEqual(chamadas.length, 1, "deveria chamar o RPC uma vez")
+  const args = chamadas[0]
+  assert.strictEqual(args.p_id, 0, "novo funcionário → p_id 0")
+  assert.strictEqual(args.p_usuario, "joao")
+  assert.strictEqual(args.p_nome, "João Silva")
+  assert.strictEqual(args.p_perfil, "operador")
+  assert.strictEqual(args.p_senha, "segredo123")
   // Operador não é admin → permissoes é um JSON (array) com os módulos marcados.
-  // Novo comportamento: o Painel (dashboard) NÃO é mais forçado no array; o preset
-  // padrão do operador não inclui dashboard nem a permissão de faturamento.
-  const perms = JSON.parse(inserts[0].permissoes)
+  const perms = JSON.parse(args.p_permissoes)
   assert.ok(Array.isArray(perms), "permissoes deve ser um array JSON")
   assert.ok(
     perms.includes("pdv"),
@@ -432,8 +442,9 @@ test("funcSalvar novo faz insert em funcionarios com usuario/nome/perfil", async
   )
 })
 
-// CASO 8b — funcSalvar novo SEM senha não insere (senha obrigatória em criação).
-test("funcSalvar novo sem senha não insere funcionário", async function () {
+// CASO 8b — funcSalvar novo SEM senha não chama o RPC (senha obrigatória na
+// criação; o front barra antes). Nada de insert cru também.
+test("funcSalvar novo sem senha não cadastra funcionário", async function () {
   const { window, doc, registro } = await montarSemeado()
   window.eval("funcForm()")
   await esperarAssentar(window)
@@ -443,6 +454,33 @@ test("funcSalvar novo sem senha não insere funcionário", async function () {
   window.eval("funcSalvar(0)")
   await esperarAssentar(window)
   assert.strictEqual((registro.insert["funcionarios"] || []).length, 0)
+  assert.strictEqual((registro.funcionarioSalvar || []).length, 0)
+})
+
+// CASO 8c — funcSalvar EDIÇÃO sem senha nova → RPC com p_senha null (mantém a
+// atual no servidor). O navegador nunca precisa da senha existente pra editar.
+test("funcSalvar edição sem senha nova chama RPC com p_senha null", async function () {
+  const { window, doc, registro } = await montarSemeado()
+  window.eval("pageFuncionarios()")
+  await esperarAssentar(window)
+  // Edita um funcionário id=7 (funcForm com objeto → modo edição).
+  window.eval(
+    'funcForm({ id: 7, usuario: "ana", nome: "Ana", perfil: "operador", ativo: true, permissoes: null })',
+  )
+  await esperarAssentar(window)
+  definirCampo(doc, "ffNome", "Ana Paula")
+  definirCampo(doc, "ffSenha", "") // não troca a senha
+  window.eval("funcSalvar(7)")
+  await esperarAssentar(window)
+  const chamadas = registro.funcionarioSalvar || []
+  assert.strictEqual(chamadas.length, 1)
+  assert.strictEqual(chamadas[0].p_id, 7)
+  assert.strictEqual(chamadas[0].p_nome, "Ana Paula")
+  assert.strictEqual(
+    chamadas[0].p_senha,
+    null,
+    "edição sem senha nova → p_senha null (servidor mantém a atual)",
+  )
 })
 
 // ============================================================

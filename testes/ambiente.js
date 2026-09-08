@@ -37,7 +37,20 @@ function criarClienteSupabaseFake() {
   // exemplo, registro.__erros.insert.transacoes = { message: "..." } para
   // simular uma FALHA daquele insert (perda de conexão, timeout). O padrão é
   // null (nenhum erro), então não afeta nenhum teste existente.
-  registro.__erros = { insert: {}, update: {}, delete: {}, upsert: {} }
+  registro.__erros = { insert: {}, update: {}, delete: {}, upsert: {}, select: {} }
+  // Ids REAIS a devolver por insert numa tabela (Estágio 3): opt-in por teste.
+  registro.__idsInsert = {}
+  // Linhas a devolver em LEITURAS de lista por tabela (Estágio 3): opt-in.
+  registro.__linhas = {}
+  // Quantas linhas um UPDATE/DELETE afeta por tabela (Estágio 4): usado pelo
+  // replay que chama .select() após update/delete para detectar "linha excluída
+  // no servidor" (0 linhas afetadas). Padrão: 1 (a linha existe). Um teste pode
+  // setar registro.__linhasAfetadas[tabela] = 0 para simular a linha ausente.
+  registro.__linhasAfetadas = {}
+  function linhasAfetadas(tabela) {
+    const configurado = registro.__linhasAfetadas[tabela]
+    return typeof configurado === "number" ? configurado : 1
+  }
   function erroInjetado(tipo, tabela) {
     return (registro.__erros[tipo] && registro.__erros[tipo][tabela]) || null
   }
@@ -47,8 +60,15 @@ function criarClienteSupabaseFake() {
   }
 
   function criarConsulta(tabela) {
-    // resultado padrão que o app espera de uma query
-    const resultado = { data: [], error: null }
+    // resultado padrão que o app espera de uma query: lista vazia, a menos que
+    // um teste tenha semeado linhas para a tabela em registro.__linhas[tabela]
+    // (opt-in, Estágio 3: simula o servidor devolvendo o que já foi gravado,
+    // para os testes de recarga pós-sincronização). Padrão desligado.
+    const linhasSemeadas =
+      registro.__linhas && Array.isArray(registro.__linhas[tabela])
+        ? registro.__linhas[tabela]
+        : []
+    const resultado = { data: linhasSemeadas, error: null }
     // Tipo da última escrita nesta cadeia (insert/update/delete/upsert), para
     // que a resolução (.then/.single) devolva o erro injetado correspondente.
     let ultimaEscrita = null
@@ -82,8 +102,17 @@ function criarClienteSupabaseFake() {
       "range",
       "limit",
     ]
+    // Colunas pedidas no último .select() desta cadeia. Guardado para que os
+    // testes de restauração de sessão possam validar que o app pediu a coluna
+    // 'permissoes' (projeção real do PostgREST). Ver __projetarSelect abaixo.
+    let colunasSelecionadas = null
     metodos.forEach(function (nome) {
-      encadeavel[nome] = function () {
+      encadeavel[nome] = function (arg) {
+        if (nome === "select" && typeof arg === "string") {
+          colunasSelecionadas = arg.split(",").map(function (c) {
+            return c.trim()
+          })
+        }
         return encadeavel
       }
     })
@@ -118,9 +147,31 @@ function criarClienteSupabaseFake() {
 
     // Devolve o resultado da cadeia levando em conta erro injetado para a
     // última escrita nesta tabela. Sem injeção, é o resultado padrão (sucesso).
+    // Quando NÃO houve escrita (é uma leitura), respeita o erro de SELECT
+    // injetado para a tabela (registro.__erros.select[tabela]) — usado pelos
+    // testes de modo offline para simular uma leitura que falha por rede.
     function resultadoComErro(base) {
-      const erro = ultimaEscrita ? erroInjetado(ultimaEscrita, tabela) : null
-      if (erro) return { data: null, error: erro }
+      if (ultimaEscrita) {
+        const erroEscrita = erroInjetado(ultimaEscrita, tabela)
+        if (erroEscrita) return { data: null, error: erroEscrita }
+        // Estágio 4: UPDATE/DELETE com .select() devolve as LINHAS afetadas. O
+        // replay usa o TAMANHO desse array para detectar "linha excluída no
+        // servidor" (0 = não aplicável). Construímos um array do tamanho
+        // configurado (padrão 1 = a linha existe).
+        if (ultimaEscrita === "update" || ultimaEscrita === "delete") {
+          const quantas = linhasAfetadas(tabela)
+          const linhas = []
+          let i = 0
+          while (i < quantas) {
+            linhas.push({})
+            i++
+          }
+          return { data: linhas, error: null }
+        }
+        return base
+      }
+      const erroLeitura = erroInjetado("select", tabela)
+      if (erroLeitura) return { data: null, error: erroLeitura }
       return base
     }
 
@@ -128,11 +179,40 @@ function criarClienteSupabaseFake() {
     // tabela 'servicos' (OS/venda), devolvemos uma linha com id fixo para o
     // fluxo de finalização seguir (ele usa os.id nos passos seguintes).
     function registroUnico() {
+      // Opt-in (Estágio 3): um teste pode enfileirar ids REAIS a devolver por
+      // insert numa tabela, via registro.__idsInsert[tabela] = [id1, id2, ...].
+      // Cada .single()/.maybeSingle() após um insert consome o próximo id (para
+      // simular o servidor devolvendo o id gerado). Só age quando a última
+      // escrita foi um insert/upsert E há fila configurada — padrão desligado,
+      // então não afeta nenhum teste existente.
+      if (
+        (ultimaEscrita === "insert" || ultimaEscrita === "upsert") &&
+        registro.__idsInsert &&
+        Array.isArray(registro.__idsInsert[tabela]) &&
+        registro.__idsInsert[tabela].length > 0
+      ) {
+        return { id: registro.__idsInsert[tabela].shift() }
+      }
       if (tabela === "servicos") return { id: 999 }
       // Para o fluxo de login: se um teste semeou um usuário em
       // registro.__loginUser, devolve-o na consulta de 'funcionarios'.
-      if (tabela === "funcionarios" && registro.__loginUser)
+      if (tabela === "funcionarios" && registro.__loginUser) {
+        // Opt-in: quando __projetarSelect está ligado, respeita a projeção do
+        // .select() — devolve SÓ as colunas pedidas (como o PostgREST faria).
+        // Assim um teste prova que o app pediu 'permissoes' no refresh: se não
+        // pedir, a coluna não vem (fica undefined). Padrão desligado para não
+        // afetar os testes existentes (que esperam o objeto inteiro).
+        if (registro.__projetarSelect && Array.isArray(colunasSelecionadas)) {
+          const projetado = {}
+          colunasSelecionadas.forEach(function (col) {
+            if (col === "*") Object.assign(projetado, registro.__loginUser)
+            else if (col in registro.__loginUser)
+              projetado[col] = registro.__loginUser[col]
+          })
+          return projetado
+        }
         return registro.__loginUser
+      }
       return null
     }
     encadeavel.maybeSingle = function () {
@@ -161,9 +241,106 @@ function criarClienteSupabaseFake() {
     return encadeavel
   }
 
+  // Registro das chamadas .rpc(nome, args) e controle do comportamento do RPC.
+  // Por padrão o RPC "não existe" (registro.__rpcDisponivel = false): resolve o
+  // erro típico do PostgREST quando a função não foi criada no banco (cliente
+  // ainda não rodou o atualizar-banco.sql), para exercitar o FALLBACK do app. Um teste pode setar
+  // registro.__rpcDisponivel = true para exercitar o CAMINHO RPC (sucesso), ou
+  // registro.__rpcErro = {...} para simular uma falha real do RPC.
+  registro.rpc = []
+  registro.__rpcDisponivel = false
+  registro.__rpcErro = null
+  registro.__rpcRetorno = { id: 999 }
+  function chamarRpc(nome, args) {
+    registro.rpc.push({ nome: nome, args: args })
+    if (registro.__rpcErro) {
+      return Promise.resolve({ data: null, error: registro.__rpcErro })
+    }
+    // Login no servidor: funcionario_login compara a senha no "banco"
+    // e devolve uma TABELA (lista) só quando bate. Reaproveita o usuário semeado
+    // em registro.__loginUser, respeitando usuario/senha/ativo — assim os testes
+    // de login continuam valendo sem depender de __rpcDisponivel.
+    if (nome === "funcionario_login") {
+      // Simula o banco AINDA sem a função (cliente não rodou o atualizar-banco.sql): o app deve
+      // cair no caminho antigo (.from('funcionarios')) sem trancar o usuário.
+      if (registro.__loginRpcAusente) {
+        return Promise.resolve({
+          data: null,
+          error: {
+            code: "PGRST202",
+            message: "Could not find the function public.funcionario_login",
+          },
+        })
+      }
+      const u = registro.__loginUser
+      const bate =
+        u &&
+        u.ativo !== false &&
+        u.usuario === (args && args.p_usuario) &&
+        u.senha === (args && args.p_senha)
+      const linha = bate
+        ? [
+            {
+              id: u.id,
+              usuario: u.usuario,
+              nome: u.nome,
+              perfil: u.perfil,
+              permissoes: u.permissoes,
+            },
+          ]
+        : []
+      return Promise.resolve({ data: linha, error: null })
+    }
+    // Cadastro/edicao no servidor: funcionario_salvar hasheia a senha
+    // NO SERVIDOR e grava. Como no banco real, o navegador so recebe o id (nunca
+    // o hash). O dublê simula: valida senha obrigatoria na criacao (p_id 0/nulo),
+    // registra os args e devolve um id. Um teste pode setar
+    // registro.__funcSalvarErro para simular falha (ex.: usuario duplicado 23505).
+    registro.funcionarioSalvar = registro.funcionarioSalvar || []
+    registro.__funcSalvarErro = registro.__funcSalvarErro || null
+    if (nome === "funcionario_salvar") {
+      registro.funcionarioSalvar.push(args || {})
+      if (registro.__funcSalvarErro) {
+        return Promise.resolve({ data: null, error: registro.__funcSalvarErro })
+      }
+      const criando = !args || !args.p_id
+      const semSenha = !args || !args.p_senha
+      if (criando && semSenha) {
+        return Promise.resolve({
+          data: null,
+          error: {
+            code: "P0001",
+            message: "Senha obrigatoria para novo funcionario",
+          },
+        })
+      }
+      return Promise.resolve({
+        data: (args && args.p_id) || 999,
+        error: null,
+      })
+    }
+    if (!registro.__rpcDisponivel) {
+      // Erro do PostgREST para função inexistente (schema desatualizado).
+      return Promise.resolve({
+        data: null,
+        error: {
+          code: "PGRST202",
+          message:
+            "Could not find the function public." +
+            nome +
+            " in the schema cache",
+        },
+      })
+    }
+    return Promise.resolve({ data: registro.__rpcRetorno, error: null })
+  }
+
   return {
     from: function (tabela) {
       return criarConsulta(tabela)
+    },
+    rpc: function (nome, args) {
+      return chamarRpc(nome, args)
     },
     // Exposto só para os testes: o registro das escritas por tabela.
     __registro: registro,
@@ -436,6 +613,18 @@ function semearProdutos(window) {
   )
 }
 
+// Define navigator.onLine no window do jsdom e dispara o evento de conexão
+// correspondente (online/offline). Usado pelos testes do modo offline para
+// simular a queda/volta da rede. jsdom permite redefinir navigator.onLine.
+function definirConexao(window, online) {
+  Object.defineProperty(window.navigator, "onLine", {
+    value: !!online,
+    configurable: true,
+  })
+  const nomeEvento = online ? "online" : "offline"
+  window.dispatchEvent(new window.Event(nomeEvento))
+}
+
 // Coleta os ids duplicados dentro de um elemento (ou do documento inteiro).
 // Devolve um array com os ids que aparecem mais de uma vez.
 function idsDuplicados(elemento) {
@@ -504,6 +693,7 @@ module.exports = {
   idsDuplicados: idsDuplicados,
   esperarAssentar: esperarAssentar,
   criarClienteSupabaseFake: criarClienteSupabaseFake,
+  definirConexao: definirConexao,
   acharCampoEstoqueMinimo: acharCampoEstoqueMinimo,
   campoDeServicoOcultado: campoDeServicoOcultado,
   campoDeServicoVisivel: campoDeServicoVisivel,

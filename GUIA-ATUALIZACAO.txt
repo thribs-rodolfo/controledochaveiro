@@ -13,7 +13,7 @@ anterior:
 O script de atualizacao se auto-detecta: roda em todos esses casos.
 
 >> Banco NOVO (cliente que nunca instalou)? Nao e aqui.
-   Use o GUIA-INSTALACAO.txt (roda o 01-criar-banco.sql).
+   Use o GUIA-INSTALACAO.txt (roda o criar-banco.sql).
 
 Fluxo (faca NA ORDEM):
    1) BACKUP   2) SQL de atualizacao   3) deploy do index
@@ -47,7 +47,7 @@ So avance quando os DOIS backups estiverem salvos.
 PASSO 2 - RODAR O SCRIPT DE ATUALIZACAO (Supabase)
 --------------------------------------------------------------------
 1. Supabase do cliente > "SQL Editor" > New query.
-2. Abra "02-atualizar-banco.sql" (do pacote), copie TUDO, cole e "Run".
+2. Abra "atualizar-banco.sql" (do pacote), copie TUDO, cole e "Run".
 3. Deve aparecer "Success". O script:
       - NAO apaga dados (idempotente, pode rodar de novo sem risco);
       - cria/ajusta licenca-ativacao, equivalencias, categorias,

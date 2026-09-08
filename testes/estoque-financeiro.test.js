@@ -80,6 +80,33 @@ test("estoqueMovForm: abre modal com tipo/quantidade/motivo do produto físico",
 })
 
 // ------------------------------------------------------------
+// (1b) Registrar movimentação DENTRO da página de Estoque: o seletor de produto
+//      lista os produtos físicos (não serviço) e, ao escolher, abre o
+//      estoqueMovForm daquele produto.
+// ------------------------------------------------------------
+test("estoqueMovEscolherProduto: seletor lista produtos físicos e abre o form ao escolher", async function () {
+  const { window, doc } = await prepararComProdutos()
+
+  window.eval("estoqueMovEscolherProduto()")
+  const box = doc.getElementById("estMovProdutos")
+  assert.ok(box, "faltou a lista de produtos do seletor (estMovProdutos)")
+  // Produto físico aparece; serviço (sem estoque) NÃO entra no seletor.
+  assert.match(box.innerHTML, /Chave Fisica/, "produto físico deveria aparecer")
+  assert.doesNotMatch(
+    box.innerHTML,
+    /Abertura de Porta/,
+    "serviço não deveria aparecer no seletor de movimentação",
+  )
+
+  // Escolher o produto abre o estoqueMovForm daquele id (form de movimentação).
+  window.eval("estoqueMovForm(10)")
+  assert.ok(
+    doc.getElementById("estSaveBtn"),
+    "escolher o produto deveria abrir o form de movimentação",
+  )
+})
+
+// ------------------------------------------------------------
 // (2) estoqueMovSalvar ENTRADA de N unidades (produto físico id 10).
 //     Deve inserir em 'movimentacoes' tipo 'entrada' com a quantidade N.
 //     OBS: o app NÃO faz update do estoque — o trigger do banco recalcula a

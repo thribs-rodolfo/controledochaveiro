@@ -54,11 +54,15 @@ function extrairExpressaoEstoqueBaixo(html) {
 // quebra de linha original (importante: um `return`+newline no source só quebra
 // se o texto for avaliado como está, sem reformatação).
 function avaliarEstoqueBaixo(expressao, chavesMock) {
+  // O trecho real termina em `.slice(0, limiteInicial)`. `limiteInicial` é o
+  // limite de itens do painel (padrão 8 no app); passamos um valor alto para
+  // não cortar nenhum item elegível do mock e testar só a regra do filtro.
   const fn = new Function(
     "CACHE",
+    "limiteInicial",
     "return (" + expressao + ");",
   )
-  return fn({ chaves: chavesMock })
+  return fn({ chaves: chavesMock }, 100)
 }
 
 // Produtos mock cobrindo os casos da regra.
@@ -73,11 +77,7 @@ const CHAVES_MOCK = [
   { id: 4, codigo: "D", descricao: "Servico D", estoque_min: 3, estoque: 1, tipo_produto: "servico" },
 ]
 
-test("dashboard estoqueBaixo (source real): inclui chave abaixo do mínimo, exclui min-zero e serviços", {
-  todo: "BUG no canônico: o filtro de estoqueBaixo do dashboard NÃO exclui serviço " +
-    "(falta `tipo_produto !== 'servico'`); serviço abaixo do mínimo aparece na lista. " +
-    "Corrigido no index alterado.",
-}, function () {
+test("dashboard estoqueBaixo (source real): inclui chave abaixo do mínimo, exclui min-zero e serviços", function () {
   const html = fs.readFileSync(CAMINHO_INDEX, "utf8")
   const expressao = extrairExpressaoEstoqueBaixo(html)
   const estoqueBaixo = avaliarEstoqueBaixo(expressao, CHAVES_MOCK)

@@ -1,0 +1,68 @@
+AVISO CENTRAL DE ATIVAÇÃO — como ligar (para a MyKey / Thiago)
+================================================================
+
+O QUE É
+-------
+Quando um chaveiro ATIVA o Controle do Chaveiro (web ou desktop), o sistema
+dele manda um aviso para a MyKey com o CADASTRO DE CONTATO dele. Assim a MyKey
+passa a ter a lista de quem usa o sistema, para dar suporte e oferecer serviços.
+
+O QUE O SISTEMA DO CHAVEIRO ENVIA (e só isso):
+  - nome_chaveiro
+  - cidade
+  - whatsapp
+  - codigo_instalacao   (o código da instalação — NÃO é o código de liberação)
+  - data_ativacao
+
+NÃO é enviado: código de liberação, senhas, nem os dados do dia a dia do
+chaveiro (clientes, vendas, estoque). Isso continua só com ele.
+
+O envio é "melhor esforço": se o chaveiro estiver offline ou o servidor estiver
+fora do ar, o aviso é ignorado em silêncio e a ativação dele funciona igual.
+Ou seja: se algum aviso não chegar, é normal — não trava ninguém.
+
+
+COMO LIGAR (3 passos)
+---------------------
+1) SUBIR O WORKFLOW NO SEU n8n
+   - No n8n: menu → Import from File → escolha o arquivo
+     "workflow-aviso-ativacao.n8n.json" (nesta mesma pasta).
+   - Ele já vem com:
+       • um nó Webhook (recebe o aviso)
+       • um nó Postgres que GARANTE a tabela "ativacoes" (CREATE TABLE
+         idempotente — pode rodar sempre, não apaga nada)
+       • um nó Postgres que GRAVA o aviso na tabela
+       • um nó PLACEHOLDER de notificação (você troca pelo seu canal)
+   - Preencha a credencial do Postgres nos dois nós Postgres
+     (onde está "PREENCHER_CREDENCIAL_POSTGRES").
+   - Se preferir criar a tabela à mão antes, rode o arquivo
+     "tabela-ativacoes.sql" (nesta pasta) no seu Postgres.
+
+2) ESCOLHER O CANAL DE NOTIFICAÇÃO
+   - No workflow há um nó chamado
+     "Notifica Thiago (PLACEHOLDER - trocar pelo seu canal)".
+   - Troque-o pelo nó do canal que você quiser (Telegram, WhatsApp, e-mail,
+     Slack, Discord...). A nota amarela no workflow traz a mensagem sugerida:
+       "Fulano, de tal cidade, ativou o Controle do Chaveiro. WhatsApp: ..."
+
+3) COLAR A URL DO WEBHOOK NA CONFIG DO CLIENTE
+   - Ative o workflow no n8n e copie a URL de PRODUÇÃO do nó Webhook
+     (algo como https://SEU-n8n/webhook/aviso-ativacao-chaveiro).
+   - WEB: no arquivo "configuracao.js" do chaveiro, cole essa URL em
+       window.URL_AVISO_ATIVACAO = '...'
+   - DESKTOP: no arquivo "tela_ativacao.py", cole a mesma URL em
+       URL_AVISO_ATIVACAO = "..."
+     (e recompile o executável).
+   - Enquanto essas variáveis estiverem com o texto de exemplo
+     "COLE_AQUI_..." nenhum aviso é enviado — nada quebra.
+
+
+TESTAR RÁPIDO
+-------------
+Depois de ligar, mande um POST de teste para a URL do webhook:
+
+  curl -X POST "https://SEU-n8n/webhook/aviso-ativacao-chaveiro" \
+    -H "Content-Type: application/json" \
+    -d '{"nome_chaveiro":"Teste","cidade":"Pouso Alegre","whatsapp":"35999990000","codigo_instalacao":"MK-TESTE","data_ativacao":"2026-08-24T12:00:00Z"}'
+
+Confira: chegou a notificação e apareceu uma linha na tabela "ativacoes".

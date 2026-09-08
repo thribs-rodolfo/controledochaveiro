@@ -31,7 +31,7 @@ O banco é onde ficam seus clientes, produtos e vendas.
    Em região, escolha "South America (São Paulo)".
 4. Aguarde 1 a 2 minutos até o projeto ficar pronto.
 5. No menu da esquerda, clique em "SQL Editor".
-6. Abra o arquivo "01-criar-banco.sql" (veio nesta pasta) num bloco de
+6. Abra o arquivo "criar-banco.sql" (veio nesta pasta) num bloco de
    notas, copie TODO o conteúdo, cole no SQL Editor e clique em "Run".
 7. Deve aparecer "Success". Pronto: seu banco está criado e já vazio,
    esperando seus dados.
